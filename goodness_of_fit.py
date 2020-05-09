@@ -57,8 +57,8 @@ class Test:
         hist_e = np.histogram(E, self._bins())[0]
 
         s = []
-        for i, (o, e) in enumerate(zip(hist_o, hist_e)):
-            if o < 5 or e < 5:
+        for i, e in enumerate(hist_e):
+            if e == 0:
                 s.append(i)
 
         hist_o = np.delete(hist_o, s)
@@ -118,7 +118,8 @@ class Test:
         bins = self._bins()
         sns.distplot(self.obs, bins=bins, kde=False,
                      norm_hist=True, hist_kws={'label': self.cols[0]})
-        sns.kdeplot(E, label='Expected KDE')
+        sns.distplot(E, bins=bins, kde_kws={'label': 'Expected KDE'},
+                     hist_kws={'label': 'Expected'})
 
         plt.title(name)
         plt.legend()
