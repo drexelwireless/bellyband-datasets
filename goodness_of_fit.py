@@ -39,7 +39,10 @@ class Test:
     def range(self):
         """list: Contains beginning and ending timestamps in microseconds."""
 
-        return [int(x) * 1000000 for x in self._range]
+        if self._range:
+            return [int(x) * 1000000 for x in self._range]
+        else:
+            return False
 
     def chi_square(self, E):
         """
@@ -52,6 +55,8 @@ class Test:
         # build histograms to be passed to chisqaure
         hist_o = np.histogram(self.obs, self._bins())[0]
         hist_e = np.histogram(E, self._bins())[0]
+
+        print(f'observed: {hist_o}\nexpected: {hist_e}')
 
         chisq, chisq_p = st.chisquare(hist_o, hist_e)
 
