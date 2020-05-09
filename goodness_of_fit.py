@@ -56,6 +56,14 @@ class Test:
         hist_o = np.histogram(self.obs, self._bins())[0]
         hist_e = np.histogram(E, self._bins())[0]
 
+        s = []
+        for i, (o, e) in enumerate(zip(hist_o, hist_e)):
+            if o < 5 or e < 5:
+                s.append(i)
+
+        hist_o = np.delete(hist_o, s)
+        hist_e = np.delete(hist_e, s)
+
         print(f'observed: {hist_o}\nexpected: {hist_e}')
 
         chisq, chisq_p = st.chisquare(hist_o, hist_e)
