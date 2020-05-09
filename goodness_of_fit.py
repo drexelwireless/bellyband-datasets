@@ -1,0 +1,187 @@
+import argparse
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scipy.stats as st
+import seaborn as sns
+
+
+class Test:
+    """
+    This class will preform the following goodness-of-fit tests agains a
+    Bellyband dataset:
+        - Chi Squared
+        - KS
+
+    Args:
+        filename (str): The name of the CSV file containing the dataset
+        epc (str): The id of the tag to be tested
+        column (str, optional): The column to be tested. Defaults to 'rssi'
+        dists (list, optional): The distributions to be tested. This can be
+            any in the scipy.stats library. Defaults to ['rayleigh'].
+        plot (bool, optional): Whether or not to plot a histogram of the data
+            with an expected KDE plot for each distribution.
+    """
+
+    def __init__(self, filename, epc, column='rssi', dists=['rayleigh'],
+                 plot=False):
+        self.cols = [column, 'epc96']
+        self.dists = dists
+        self.epc = epc
+        self.filename = filename
+        self.plot = plot
+
+        self._get_data()
+
+    def chi_square(self, E):
+        """
+        Preform Chi Squared test and print results.
+
+        Args:
+            E (numpy NDArray): The expected values.
+        """
+
+        # build histograms to be passed to chisqaure
+        hist_o = np.histogram(self.obs, self._bins())[0]
+        hist_e = np.histogram(E, self._bins())[0]
+
+        chisq, chisq_p = st.chisquare(hist_o, hist_e)
+
+        print(f'---- chi_square -----\n' +
+              f'Chisq: {chisq}\np: {chisq_p}')
+
+    def ks(self, dist):
+        """
+        Preform KS test and print results.
+
+        Args:
+            dist (callable): A callable representing the distribution used to
+                calculate the CDF.
+        """
+
+        D, D_p = st.kstest(self.obs, dist.name, args=([*dist.fit(self.obs)]))
+
+        print(f'---- ks_test ----\n' +
+              f'D: {D}\np: {D_p}')
+
+    def run_tests(self):
+        """
+        Run both Chi Squared and KS tests for each distribution.
+        """
+
+        sns.set()
+
+        # check that the epc exists in the dataframe
+        try:
+            assert self.epc in self.df['epc96'].values
+        except AssertionError:
+            raise AssertionError('Tag ID not found in data')
+
+        for d in self.dists:
+
+            # get the distribution from the scipy stats library
+            dist = vars(st)[d]
+            print(f'\n\n#### {dist.name} ####')
+
+            E = self._expected(dist)
+            self.chi_square(E)
+            self.ks(dist)
+
+            if self.plot:
+                self.generate_plot(dist.name, E)
+
+    def generate_plot(self, name, E):
+        """
+        Generate a histogram of the observed values and the expected KDE of a
+        distribution fit to those values.
+
+        Args:
+            name (str): The name of the distribution.
+            E (numpy NDArray): The expected values.
+        """
+
+        bins = self._bins()
+        sns.distplot(self.obs, bins=bins, kde=False,
+                     norm_hist=True, hist_kws={'label': self.cols[0]})
+        sns.kdeplot(E, label='Expected KDE')
+
+        plt.title(name)
+        plt.legend()
+        plt.show()
+
+    @staticmethod
+    def plot_column(filename, c):
+        """
+        Generate a scatter plot of a column's data while labelling the tag ID
+        of each point. Each ID will be printed for copying.
+
+        Args:
+            filename (str): The name of the CSV file.
+            c (str): The name of the column to be plotted.
+        """
+
+        sns.set()
+
+        df = pd.read_csv(filename, usecols=[c, 'relative_timestamp', 'epc96'])
+        df['relative_timestamp'] = df['relative_timestamp'] / 1000000
+        sns.relplot(x='relative_timestamp', y=c, hue='epc96', data=df)
+        print('#### tags:', pd.Series(df['epc96']).unique())
+
+        plt.show()
+
+    def _expected(self, dist):
+        E = dist.rvs(*dist.fit(self.obs), self.obs.size)
+        return E
+
+    def _bins(self):
+        if np.unique(self.obs).size <= 20:
+            bins = np.unique(self.obs).size + 1
+            bins = np.add(np.arange(0, bins), np.min(self.obs))
+        else:
+            bins = np.linspace(np.min(self.obs), np.max(self.obs), 20)
+
+        return bins
+
+    def _get_data(self):
+        self.df = pd.read_csv(self.filename, usecols=self.cols)
+        x = self.df[self.cols[0]]
+        self.obs = x[self.df['epc96'] == self.epc].values
+
+
+if __name__ == '__main__':
+    desc = ('''Test the goodness of fit of an RSSI signal to a given
+            distribution using chi sqaured and ks tests. The ID of the tag
+            must be passed with -e or --epc. Without this argument the signal
+            will be plotted with the IDs labelled.''')
+    parser = argparse.ArgumentParser(description=desc)
+
+    parser.add_argument('filename', help='The CSV file containing the signal.')
+    parser.add_argument('-c', '--column',
+                        action='store',
+                        default='rssi',
+                        help='''The column to read the signal from. Defaults to
+                                \'rssi\'.''')
+    parser.add_argument('-d', '--distributions',
+                        action='store',
+                        nargs='+',
+                        default=['rayleigh'],
+                        help='''The distributions to compare to. Defaults to
+                                \'rayleigh\'.'''
+                        )
+    parser.add_argument('-e', '--epc',
+                        action='store',
+                        help='The ID of the tag to be tested.')
+    parser.add_argument('-p', '--plot',
+                        action='store_true',
+                        default=False,
+                        help='Generate plots inline with each test.'
+                        )
+
+    args = parser.parse_args()
+
+    if args.epc:
+        test = Test(args.filename, args.epc, args.column, args.distributions,
+                    args.plot)
+        test.run_tests()
+    else:
+        Test.plot_column(args.filename, args.column)
