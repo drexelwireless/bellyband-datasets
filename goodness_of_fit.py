@@ -21,17 +21,25 @@ class Test:
             any in the scipy.stats library. Defaults to ['rayleigh'].
         plot (bool, optional): Whether or not to plot a histogram of the data
             with an expected KDE plot for each distribution.
+        r (list, optional): The start and end time to be used in seconds.
     """
 
     def __init__(self, filename, epc, column='rssi', dists=['rayleigh'],
-                 plot=False):
-        self.cols = [column, 'epc96']
+                 plot=False, r=None):
+        self.cols = [column, 'epc96', 'relative_timestamp']
         self.dists = dists
         self.epc = epc
         self.filename = filename
         self.plot = plot
+        self._range = r
 
         self._get_data()
+
+    @property
+    def range(self):
+        """list: Contains beginning and ending timestamps in microseconds."""
+
+        return [int(x) * 1000000 for x in self._range]
 
     def chi_square(self, E):
         """
@@ -71,12 +79,6 @@ class Test:
 
         sns.set()
 
-        # check that the epc exists in the dataframe
-        try:
-            assert self.epc in self.df['epc96'].values
-        except AssertionError:
-            raise AssertionError('Tag ID not found in data')
-
         for d in self.dists:
 
             # get the distribution from the scipy stats library
@@ -110,7 +112,7 @@ class Test:
         plt.show()
 
     @staticmethod
-    def plot_column(filename, c):
+    def plot_column(filename, c, r=None):
         """
         Generate a scatter plot of a column's data while labelling the tag ID
         of each point. Each ID will be printed for copying.
@@ -118,12 +120,18 @@ class Test:
         Args:
             filename (str): The name of the CSV file.
             c (str): The name of the column to be plotted.
+            r (list, optional): Contains the start and end time in seconds.
         """
 
         sns.set()
 
-        df = pd.read_csv(filename, usecols=[c, 'relative_timestamp', 'epc96'])
+        df = pd.read_csv(filename, usecols=[c, 'epc96', 'relative_timestamp'])
         df['relative_timestamp'] = df['relative_timestamp'] / 1000000
+
+        if r:
+            df = df[int(r[0]) < df['relative_timestamp']]
+            df = df[int(r[1]) > df['relative_timestamp']]
+
         sns.relplot(x='relative_timestamp', y=c, hue='epc96', data=df)
         print('#### tags:', pd.Series(df['epc96']).unique())
 
@@ -144,6 +152,17 @@ class Test:
 
     def _get_data(self):
         self.df = pd.read_csv(self.filename, usecols=self.cols)
+
+        # check that the epc exists in the dataframe
+        try:
+            assert self.epc in self.df['epc96'].values
+        except AssertionError:
+            raise AssertionError('Tag ID not found in data')
+
+        if self.range:
+            self.df = self.df[self.range[0] < self.df['relative_timestamp']]
+            self.df = self.df[self.range[1] > self.df['relative_timestamp']]
+
         x = self.df[self.cols[0]]
         self.obs = x[self.df['epc96'] == self.epc].values
 
@@ -176,12 +195,16 @@ if __name__ == '__main__':
                         default=False,
                         help='Generate plots inline with each test.'
                         )
+    parser.add_argument('-r', '--range',
+                        action='store',
+                        nargs=2,
+                        help='The start and end time to be used in seconds.')
 
     args = parser.parse_args()
 
     if args.epc:
         test = Test(args.filename, args.epc, args.column, args.distributions,
-                    args.plot)
+                    args.plot, args.range)
         test.run_tests()
     else:
-        Test.plot_column(args.filename, args.column)
+        Test.plot_column(args.filename, args.column, args.range)
