@@ -22,16 +22,18 @@ class Test:
         plot (bool, optional): Whether or not to plot a histogram of the data
             with an expected KDE plot for each distribution.
         r (list, optional): The start and end time to be used in seconds.
+        bins (int, optional): The number of bins used for histograms.
     """
 
     def __init__(self, filename, epc, column='rssi', dists=['rayleigh'],
-                 plot=False, r=None):
+                 plot=False, r=None, bins=None):
         self.cols = [column, 'epc96', 'relative_timestamp']
         self.dists = dists
         self.epc = epc
         self.filename = filename
         self.plot = plot
         self._range = r
+        self.bins = bins
 
         self._get_data()
 
@@ -156,16 +158,19 @@ class Test:
         return E
 
     def _bins(self):
-        if np.unique(self.obs).size <= 20:
+        if not self.bins and np.unique(self.obs).size <= 20:
             bins = np.unique(self.obs).size + 1
             bins = np.add(np.arange(0, bins), np.min(self.obs))
         else:
-            bins = np.linspace(np.min(self.obs), np.max(self.obs), 20)
+            bins = np.linspace(np.min(self.obs), np.max(self.obs),
+                               (self.bins or 20))
 
         return bins
 
     def _get_data(self):
         self.df = pd.read_csv(self.filename, usecols=self.cols)
+
+        # self.df['rssi'] = st.norm.rvs(size=self.df['rssi'].size)
 
         # check that the epc exists in the dataframe
         try:
@@ -189,6 +194,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument('filename', help='The CSV file containing the signal.')
+    parser.add_argument('-b', '--bins',
+                        action='store',
+                        help='The number of bins used for histograms.')
     parser.add_argument('-c', '--column',
                         action='store',
                         default='rssi',
@@ -218,7 +226,7 @@ if __name__ == '__main__':
 
     if args.epc:
         test = Test(args.filename, args.epc, args.column, args.distributions,
-                    args.plot, args.range)
+                    args.plot, args.range, int(args.bins))
         test.run_tests()
     else:
         Test.plot_column(args.filename, args.column, args.range)
